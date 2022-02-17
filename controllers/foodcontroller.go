@@ -3,8 +3,11 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
+	"restaurant/database"
 	"restaurant/models"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +22,41 @@ var validate = validator.New()
 
 func GetFoods() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		recordPerPage, err := strconv.Atoi(c.Query("recordPerPage"))
+		if err != nil || recordPerPage < 1 {
+			recordPerPage = 10
+		}
+		page, err := strconv.Atoi(c.Query("page"))
+		if err != nil || page < 1 {
+			page = 1
+		}
+		startIndex := (page - 1) * recordPerPage
+		startIndex, err = strconv.Atoi(c.Query("startIndex"))
+		matchStage := bson.D{{"$match", bson.D{{}}}}
+		groupStage := bson.D{{"$group", bson.D{{"_id", bson.D{{"_id", "null"}}}, {"total_count", bson.D{{"$sum,1"}}},{"data",bson.D{{"$push","$$ROOT"}}}}}}
+		projectStage:=bson.D{
+			{
+				"$project",bson.D{
+					{"_id",0},
+					{"total_count",1},
+					{"food_items",bson.D{{"$slice",[]interface{}{"$data",startIndex,recordPerPage}}}}
+				}
+			}
+		}
+		result,err := foodCollection.Aggregate(ctx,mongo.Pipeline{
+			matchStage, groupStage, projectStage
+		})
+		defer cancel()
+		if err!=nil {
+			c.JSON{http.StatusInternalServerError, gin.h{"error":"error while listing foods"}}
+			
+		}
+		var allFoods[]bson.M
+		if err = result.All(ctx,&allFoods); err !=nil{
+			log.Fatal(err)
+		}
+		c.JSON(http.StatusOK, allFoods[0])
 	}
 }
 func GetFood() gin.HandlerFunc {
@@ -58,8 +95,8 @@ func CreateFood() gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
 			return
 		}
-		food.Created_at, _ = time.Parse(time.RFC3339, time.Now()).Format(time.RFC3339)
-		food.Updated_at, _ = time.Parse(time.RFC3339, time.Now()).Format(time.RFC3339)
+		food.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		food.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		food.ID = primitive.NewObjectID()
 		food.Food_id = food.ID.Hex()
 		var num = toFixed(*food.Price, 2)
@@ -68,7 +105,7 @@ func CreateFood() gin.HandlerFunc {
 		result, insertErr := foodCollection.InsertOne(ctx, food)
 		if insertErr != nil {
 			msg := fmt.Sprintf("Food item was not created")
-			c.JSON(http.StatusInternalServerError, gin.H{"error:msg"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
 			return
 		}
 		defer cancel()
@@ -83,6 +120,67 @@ func toFixed(num float64, precision int) float64 {
 }
 func UpdateFood() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		var food models.Food
+		var menu models.Menu
+		foodId := c.Param{"food_id"}
 
+		if err := c.BindJSON(&food); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		var updateObj primitive.D
+		if food.Name != nil {
+	
+		}
+		if food.Price != nil {
+			
+		}
+		if food.Food_image != nil {
+	
+		}
+		if food.Menu_id != nil {
+	
+		}
+		food.Updated_at,_= time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		updateObj = append(updateObj, bson.E{"updated_at", menu.Updated_at})
+		if menu.Start_Date != nil && menu.End_Date != nil {
+			if !inTimeSpan(*menu.Start_Date, *menu.End_Date, time.Now()) {
+				msg := "kindly retype the item"
+				c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+				defer cancel()
+				return
+			}
+			updateObj = append(updateObj, bson.E{"start_date", menu.Start_Date})
+			updateObj = append(updateObj, bson.E{"end_date", menu.End_Date})
+			if menu.Name != "" {
+				updateObj = append(updateObj, bson.E{"name", menu.Name})
+			}
+			if menu.Category != "" {
+				updateObj = append(updateObj, bson.E{"name", menu.Category})
+			}
+			
+
+			upsert := true
+
+			opt := options.UpdateOptions{
+				Upsert: &upsert,
+			}
+			result, err := menuCollection.UpdateOne(
+				ctx,
+				filter,
+				bson.D{
+					{"$set", updateObj},
+				},
+				&opt,
+			)
+			if err != nil {
+				msg := "Menu update failed"
+				c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+
+			}
+			defer cancel()
+			c.JSON(http.StatusOK, result)
+		}
 	}
 }
