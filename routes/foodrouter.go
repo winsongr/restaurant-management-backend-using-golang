@@ -1,7 +1,8 @@
 package routes
 
 import (
-	controller "restaurant/controllers"
+	controller  "restaurant/controllers"
+
 	"github.com/gin-gonic/gin"
 )
 //go mod tidy
