@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"restaurant/database"
 	"restaurant/models"
@@ -113,10 +114,11 @@ func CreateFood() gin.HandlerFunc {
 	}
 }
 func round(num float64) {
-
+return int (num + math.Copysign(0.5, num))
 }
 func toFixed(num float64, precision int) float64 {
-
+	output:= mat.Pow(10,float64(precision))
+	return float64(round(num*output))/output
 }
 func UpdateFood() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -131,19 +133,53 @@ func UpdateFood() gin.HandlerFunc {
 		}
 		var updateObj primitive.D
 		if food.Name != nil {
-	
+			updateObj = append(updateObj, bson.E{"name", food.Name})
+
 		}
 		if food.Price != nil {
-			
+			updateObj = append(updateObj, bson.E{"price", food.Price})
+
 		}
 		if food.Food_image != nil {
+			updateObj = append(updateObj, bson.E{"food_image", food.image})
 	
 		}
 		if food.Menu_id != nil {
-	
+			err := menuCollection.FindOne(ctx,bson.M{"menu_id":food.Menu_id}).Decode(&menu)
+			defer cancel()
+			if err!=nil{
+				msg:=fmt.Sprintf("message:menu not found")
+				c.JSON(http.StatusInternalServerError, gin.H{"error":msg})
+				return
+			}
+			updateObj = append(updateObj, bson.E{"menu",food.Price})
 		}
 		food.Updated_at,_= time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
-		updateObj = append(updateObj, bson.E{"updated_at", menu.Updated_at})
+		updateObj = append(updateObj, bson.E{"updated_at", food.Updated_at})
+		upsert := true
+		filter := bson.M{"food_id": foodID}
+
+		opt := options.UpdateOptions{
+			Upsert: &upsert,
+		}
+		result,err := foodCollection.UpdateOne(
+			ctx,
+			filter,
+			bson.D{
+				{"$set",updateObj}
+			},
+			&opt,
+		)
+		if err != nil {
+			msg := fmt.Sprint("Menu update failed")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+				return
+		}
+		c.JSON(http.StatusOK, result)
+
+
+
+
 		if menu.Start_Date != nil && menu.End_Date != nil {
 			if !inTimeSpan(*menu.Start_Date, *menu.End_Date, time.Now()) {
 				msg := "kindly retype the item"
@@ -161,7 +197,6 @@ func UpdateFood() gin.HandlerFunc {
 			}
 			
 
-			upsert := true
 
 			opt := options.UpdateOptions{
 				Upsert: &upsert,
