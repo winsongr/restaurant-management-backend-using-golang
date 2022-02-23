@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
-
+//mongodeb connection
 func DBinstance() *mongo.Client {
 	fmt.Print(MongoDb)
 
